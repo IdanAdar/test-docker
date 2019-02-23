@@ -1,9 +1,5 @@
 FROM docker:stable-dind
 
-ENV LANG=C.UTF-8 \
-  JAVA_HOME=/usr/lib/jvm/java-1.8-openjdk \
-  PATH=$PATH:/usr/lib/jvm/java-1.8-openjdk/jre/bin:/usr/lib/jvm/java-1.8-openjdk/bin:/usr/local/bin/ibmcloud:/bin/sonar-scanner/bin/sonar-scanner
-
 RUN apk add --no-cache \
     gnupg \
     ncurses \
@@ -52,7 +48,8 @@ RUN curl -s -L https://github.com/mikefarah/yq/releases/download/2.2.1/yq_linux_
 RUN curl -s -L https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-3.3.0.1492-linux.zip -o sonarscanner.zip \
   && unzip -qq sonarscanner.zip \
   && rm -rf sonarscanner.zip \
-  && mv sonar-scanner-3.3.0.1492-linux /bin/sonar-scanner
+  && mv sonar-scanner-3.3.0.1492-linux /bin/sonar-scanner \
+  && chmod +x /bin/sonar-scanner
 COPY sonar-scanner.properties /bin/sonar-scanner/conf/sonar-scanner.properties
 RUN sed -i 's/use_embedded_jre=true/use_embedded_jre=false/g' /bin/sonar-scanner/bin/sonar-scanner
 
@@ -68,7 +65,7 @@ RUN helm repo add ibm https://registry.bluemix.net/helm/ibm \
   && helm repo update
 
 # Install IBM Cloud CLI and plug-ins.
-RUN curl -fsSL https://clis.ng.bluemix.net/install/linux | sh
+RUN curl -s -L https://clis.ng.bluemix.net/install/linux | sh
   #&& ibmcloud plugin install kubernetes-service \
   #&& ibmcloud plugin install container-registry \
   #&& ibmcloud plugin install cloud-internet-services \
@@ -87,9 +84,12 @@ RUN addgroup docker \
     && echo "jenkins ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers \
     && echo "jenkins:jenkinspass" | chpasswd \
     && chmod u+s /bin/ping \
+    && chmod +x /bin/sonar-scanner/bin/sonar-scanner \
     && chown -R jenkins:docker /home/jenkins \
     && mv /etc/profile.d/color_prompt /etc/profile.d/color_prompt.sh \
     && ln -s /usr/local/bin/docker /usr/bin/docker \
+    && mv /bin/sh /bin/sh.bak \
+    && ln -s /bin/bash /bin/sh \
     && echo -e "# Java\nJAVA_HOME=${JAVA_HOME}\nPATH=\$PATH:\$JAVA_HOME\nexport JAVA_HOME PATH\n" > /etc/profile.d/java.sh
 
 # Speed up builds by including slave.jar.
@@ -101,6 +101,10 @@ RUN chown jenkins:docker /home/jenkins/slave.jar
 COPY id_rsa /root/.ssh/id_rsa
 COPY id_rsa.pub /root/.ssh/id_rsa.pub
 RUN ssh-keyscan -t rsa github.ibm.com >> /root/.ssh/known_hosts
+
+ENV LANG C.UTF-8
+ENV JAVA_HOME /usr/lib/jvm/java-1.8-openjdk
+ENV PATH "$PATH:/usr/lib/jvm/java-1.8-openjdk/jre/bin:/usr/lib/jvm/java-1.8-openjdk/bin"
 
 COPY jenkins-agent-entrypoint.sh /usr/local/bin
 ENTRYPOINT ["/sbin/tini","/usr/local/bin/jenkins-agent-entrypoint.sh"]
